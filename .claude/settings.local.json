@@ -17,7 +17,8 @@
       "WebFetch(domain:www.nvaccess.org)",
       "Bash(pip install:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(if not exist \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\tests\" mkdir \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\tests\")"
     ]
   },
   "hooks": {

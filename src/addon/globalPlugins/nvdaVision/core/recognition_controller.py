@@ -124,14 +124,25 @@ class RecognitionController:
             # Step 3: Cache miss - perform inference
             logger.info("Cache miss - performing inference")
 
-            # Set up progress feedback (after 5 seconds)
+            # Set up progress feedback (after 5 seconds) - real.md constraint 6
             def progress_monitor():
                 nonlocal progress_notified
                 time.sleep(5.0)
                 if not progress_notified and self._current_thread and self._current_thread.is_alive():
-                    logger.info("Long-running inference, notifying user...")
-                    # TODO: Add progress speech feedback via callback
-                    progress_notified = True
+                    elapsed = time.time() - start_time
+                    logger.info(f"Long-running inference, {elapsed:.1f}s elapsed")
+
+                    # Notify user via voice feedback
+                    try:
+                        import wx
+                        import ui
+                        wx.CallAfter(
+                            ui.message,
+                            f"Recognizing, {int(elapsed)} seconds elapsed..."
+                        )
+                        progress_notified = True
+                    except Exception as e:
+                        logger.warning(f"Failed to provide progress feedback: {e}")
 
             progress_thread = threading.Thread(target=progress_monitor, daemon=True)
             progress_thread.start()
@@ -233,6 +244,21 @@ class RecognitionController:
         self._current_element_index -= 1
         if self._current_element_index < 0:
             self._current_element_index = 0
+            return None
+
+        return self._current_result.elements[self._current_element_index]
+
+    def get_current_element(self) -> Optional[UIElement]:
+        """Get currently focused UI element.
+
+        Returns:
+            Current UIElement or None if no elements available
+        """
+        if not self._current_result or not self._current_result.elements:
+            return None
+
+        if self._current_element_index < 0 or \
+           self._current_element_index >= len(self._current_result.elements):
             return None
 
         return self._current_result.elements[self._current_element_index]

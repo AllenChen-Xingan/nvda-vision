@@ -118,9 +118,11 @@ class VisionEngine:
         except TimeoutError:
             logger.warning(f"Primary adapter timed out after {timeout}s")
             self._fallback_count += 1
+            self._notify_user("Primary model timed out, switching to backup...")
         except Exception as e:
             logger.warning(f"Primary adapter failed: {e}")
             self._fallback_count += 1
+            self._notify_user("Primary model failed, switching to backup...")
 
         # Try backup adapters
         for adapter in self.backup_adapters:
@@ -144,21 +146,28 @@ class VisionEngine:
 
         # Try cloud adapter (only if enabled and consented)
         if self.enable_cloud and self.cloud_adapter:
-            try:
-                logger.debug(f"Attempting inference with cloud: {self.cloud_adapter.name}")
-                self._cloud_count += 1
+            # Check user consent for cloud API usage (real.md constraint 1)
+            if self._check_cloud_consent():
+                try:
+                    logger.debug(f"Attempting inference with cloud: {self.cloud_adapter.name}")
+                    self._cloud_count += 1
+                    self._notify_user("Local models failed, using cloud API...")
 
-                elements = self.cloud_adapter.infer(screenshot, timeout=timeout)
-                elapsed = time.time() - start_time
+                    elements = self.cloud_adapter.infer(screenshot, timeout=timeout)
+                    elapsed = time.time() - start_time
 
-                logger.info(
-                    f"Cloud inference successful: {len(elements)} elements "
-                    f"in {elapsed:.2f}s"
-                )
-                return elements, InferenceSource.CLOUD_API
+                    logger.info(
+                        f"Cloud inference successful: {len(elements)} elements "
+                        f"in {elapsed:.2f}s"
+                    )
+                    self._notify_user(f"Recognition successful via cloud API")
+                    return elements, InferenceSource.CLOUD_API
 
-            except Exception as e:
-                logger.error(f"Cloud adapter failed: {e}")
+                except Exception as e:
+                    logger.error(f"Cloud adapter failed: {e}")
+            else:
+                logger.info("User declined cloud API usage")
+                self._notify_user("Cloud API declined by user")
 
         # All adapters failed
         elapsed = time.time() - start_time
@@ -191,6 +200,55 @@ class VisionEngine:
 
         # Cloud adapter doesn't need unloading
         logger.info("All models unloaded")
+
+    def _notify_user(self, message: str):
+        """Notify user with voice feedback.
+
+        Args:
+            message: Message to announce
+        """
+        try:
+            import wx
+            import ui
+            wx.CallAfter(ui.message, message)
+        except Exception as e:
+            logger.warning(f"Failed to notify user: {e}")
+
+    def _check_cloud_consent(self) -> bool:
+        """Check if user consents to cloud API usage.
+
+        Returns:
+            True if user consents, False otherwise
+
+        Implementation follows real.md constraint 1 (privacy-first)
+        """
+        # Check if permanent consent is enabled in config
+        # This would be set via configuration interface
+        # For now, always ask for consent
+
+        try:
+            import wx
+            dlg = wx.MessageDialog(
+                None,
+                (
+                    "Local models failed to recognize the screen.\n\n"
+                    "Allow using cloud API?\n"
+                    "(Will upload screenshot to Doubao cloud service)\n\n"
+                    "You can permanently enable cloud API in settings."
+                ),
+                "Use Cloud API?",
+                wx.YES_NO | wx.ICON_QUESTION | wx.NO_DEFAULT
+            )
+
+            result = dlg.ShowModal()
+            dlg.Destroy()
+
+            return result == wx.ID_YES
+
+        except Exception as e:
+            logger.exception(f"Failed to show consent dialog: {e}")
+            # Default to no consent on error
+            return False
 
     def get_statistics(self) -> dict:
         """Get inference statistics.
