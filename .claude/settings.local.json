@@ -23,7 +23,8 @@
       "Bash(python run_tests.py:*)",
       "Bash(python:*)",
       "Bash(ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git push:*)"
     ]
   },
   "hooks": {
