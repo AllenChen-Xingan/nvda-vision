@@ -1,0 +1,150 @@
+# NVDA 插件开发实践第四篇： 开发插件就是把一堆实验代码整理出来 - NVDA 中文站
+
+感谢每一位关心这个系列文章的读者。我收到了很多的反馈和夸赞，实在惭愧，这个系列的文章拖到了2025年。正式承诺：2025年4月份把本系列文章更新完。  
+希望这个承诺对一些人而言是一个小小的礼物，我依然希望收到读者的反馈和评论，这个 Flag 是否立得住，就要看大家的了！
+
+这是 NVDA 插件开发实践系列文章的第四篇。你可以通过下面的“传送门”查看之前的章节：
+
+*   [第一篇（画饼篇）](https://nvdacn.com/index.php/archives/1296/)
+*   [第二篇：预备篇—确定需求，寻找已有方案](https://nvdacn.com/index.php/archives/1319/)
+*   [第三篇： 敢想敢做——写出你的第一行代码，控制台不可怕](https://nvdacn.com/index.php/archives/1381/)
+
+## 前言
+
+在上一篇，我带你简单探索了 NVDA 的代码库，用实际的例子演示了一下怎么“复制粘贴”，还用相当大的篇幅介绍了 NVDA 的 Python 控制台。最后，很重要的一点，我还提醒你用 NVDA Python 控制台自己探索一下。
+
+文章更新时间跨度实在是太长了，如果你已经把前面的内容忘干净了，那么在阅读下面的文字之前，一定要去读一下前面的章节，尤其是[第三篇](https://nvdacn.com/index.php/archives/1381/)的所有内容。
+
+## 一点准备工作
+
+**如果 NV Access 或社区贡献者修复了下述问题，这部分内容将被删除。**
+
+由于 Electron 的一个 Bug 导致 NVDA 获取状态栏的功能被破坏了，具体见[Issue#17339](https://github.com/nvaccess/nvda/issues/17339)。
+
+我思来想去，对于本系列文章，最容易过度，最不至于把新手搞糊涂的方案就是推荐安装修复插件，然后按照原有计划进行。
+
+请在进行下面的开发实践之前，前往 NVDA 插件商店搜索 "[Mouse enhancement](https://github.com/hwf1324/mouseEnhancement)" 并安装，这是 HWF1324 针对上述问题开发的一个修复插件。
+
+## 回顾：
+
+回顾一下我们前面的需求：提供一个快捷键用于在需要的时候读出 Visual Studio Code 代码编辑区域的行号。
+
+因为行号在状态栏上有显示，那么我们简单粗暴的想到可以从状态栏上获取这个信息，为此，我们做了一些探索：在 NVDA 代码库中找到了 `api.getStatusBar` 这个函数，用于得到状态栏对象，还有一个 `api.getStatusBarText` 用于得到状态栏对象的文本，以及用， `ui.message` 来让 NVDA 读出文本信息。
+
+看起来“盖房子”需要的建筑材料都齐备了，那么编码不同于盖房子的一大好处是它可以反复是错。我们已经在 NVDA Python 控制台中执行过一些代码片段，这个过程相当于验证我们盖房子的原材料是否合格，既然没问题了，那么，我们找一块空地把所需的材料拿过来，搭个房子试试看。
+
+## 复制到哪里
+
+在上一节，我提到“写代码从学会 Copy 开始”，我们解决了“从哪里复制”的问题，下面我们来看看复制到哪里？
+
+### scratchpad 目录和 appModules
+
+在进行后面的内容之前，我建议你转到“按键与手势”对话框，找到“浏览当前的 NVDA 用户配置目录”为其分配一个快捷键。
+
+我分配了 `NVDA+Windows+U` 供参考。
+
+在 NVDA 的用户配置目录下有个名为 scratchpad 的目录，这里就是用来执行 NVDA 插件实验性代码的地方，进入这个目录，你会发现以下子目录：
+
+*   appModules
+*   brailleDisplayDrivers
+*   contentRecognizers
+*   globalPlugins
+*   imageDescribers
+*   synthDrivers
+*   visionEnhancementProviders
+
+顾名思义，以上是 NVDA 支持用户自行开发的几种插件类型，我们最常见的就是 appModules（应用模块）， globalPlugins（全局插件）和 synthDrivers（语音合成器驱动），
+
+他们各自有着不同的用途和作用周期，在本例中，我们要为 Visual Studio Code 这个特定应用开发增强插件，也就是 appModules 这种插件类型。
+
+那么你可能会想，用 globalPlugins 全局插件就不行吗？当然可以，但在本例中没必要：
+
+1.  我们的需求已经明确——读出 VS Code 中的行号。如果你将其开发为全局插件，就需要处理更多的边缘情况，比如不在 VS Code 中会发声什么？
+2.  我们设想的交互方式——使用一个快捷键来读出获取到的行号。如果不在 VS Code 中，占用的这个快捷键该怎么办？
+3.  你可能会想，如果我用 [VS Code Online](https://vscode.dev/) 不是也有同样的需求吗？没错，但我推荐你将其视为一个子问题，即：如何将一个特定 appModule 应用到特定网页。
+
+### appModules 的匹配规则
+
+通过以上关于为什么选择应用模块以及 VS Code Online 这个 case 的讨论，你或许意识到了，我们讲的 appModules 应用模块，是有其明确匹配规则的，即，NVDA 根据什么逻辑把一段代码跟一个特定应用建立关联。
+
+很简单，匹配的最关键信息是 appName，只要我们把插件的 python 脚本文件名称命名为目标应用的 appName 那么 NVDA 就会将其与目标应用进行关联。
+
+这里要知道，appName 和你看到的窗口标题在大多数情况下不完全一致，跟应用的进程名也不完全相等，拿PC微信来说，当你打开微信后，在标题栏看到的可能是“微信”这两个字，但它的 appName 可不是“微信”。
+
+再比如，当你在浏览器中打开一个网页例如 [vs code online](https://vscode.dev/) 其 appName 是浏览器的 appName 并不是 vscode 或者其他。
+
+我为什么不说应用的进程名，而说 appName 呢，因为这两者不完全等价，感兴趣的话，你可以在这里查看 [getAppNameFromProcessID](https://github.com/nvaccess/nvda/blob/4bab722357b855241e38e7c3a129c97dfe0d462d/source/appModuleHandler.py#L167) 的具体实现。
+
+### 又见 NVDA python 控制台
+
+读完上面的内容你或许有个疑问了，我该如何获取到特定应用的 appName 呢？  
+我推荐使用 NVDA Python 控制台来获取。
+
+1.  首先，转到要获取 appName 的应用，意思是焦点一定要停留在这个应用窗口内，比如我打开了 VS Code 焦点在代码编辑区域；
+2.  打开 NVDA Python 控制台；
+3.  键入 `focus.appModule.appName` 回车执行。
+
+在 NVDA Python 控制台的输出区域我看到以下内容：
+
+```
+>>> focus.appModule.appName
+'code'
+```
+
+所以 `code` 就是 VS Code 的 appName 了。
+
+关于 `focus.appModule` 你可以探索的东西有很多，比如 `focus.appModule.appPath` 可以打印出当前焦点所在应用的完整进程路径。
+
+作为启发，在前面我提到获取 appName 之前，必须将焦点停留在目标应用窗口内。这是为什么呢？因为我们用的是 `focus.appModule.appName`，那位同学已经想到了，如果我们使用 `nav.appModule.appName` 将原来的 `focus` 当前系统焦点改成 `nav` 当前导航对象（Current navigator object）会怎样呢？
+
+假如你对 NVDA 的基础使用很熟练的话，你会想到以下：
+
+1.  在 NVDA 的默认设置下 `NVDA+7` 处于开启状态，如果没有在获得系统焦点后改变 navigator 那么 `nav is focus` 将返回 `True`；
+2.  根据 NVDA 的对象导航规则，移动导航对象，系统焦点不会跟随移动，所以 nav 可以随意移动，移动到目标应用内再去打印 `nav.appModule.appName` 也是一样的效果。
+
+有时候电脑会弹出一个悬浮窗，且系统焦点无法停留，例如常见的广告弹窗，此时我们很想知道这个窗口所属的进程路径，就可以将对象导航移动到该悬浮窗上，随后打开 NVDA Python 控制台，执行 `nav.appModule.appPath` 随后你就可以顺藤摸瓜了。
+
+如果你已经忘记了 `focus`和`nav` 是什么，也忘记了 NVDA Python 控制台的基本操作，请认真回顾第三篇的内容。
+
+### 让猜想成为现实
+
+在 NVDA 的用户配置目录下打开前面提到的 `scratchpad` 目录，随后进入 `appModules` 目录，新建一个名为 `code.py` 的 python 脚本文件。
+
+使用 windows 默认记事本打开 `code.py` 随后将以下代码复制粘贴到 `code.py` 中保存并关闭：
+
+```
+import api
+import appModuleHandler
+import ui
+from scriptHandler import script
+
+class AppModule(AppModule):
+
+    @script(gesture="kb:NVDA+Shift+Control+L", description="Report current line in vscode.")
+    def script_reportLine(self, gesture):
+        statusBarText = api.getStatusBarText(api.getStatusBar())
+        ui.message(statusBarText)
+```
+
+超前一步的你是不是已经去重新启动 NVDA 了，如果你不看下面的内容，那么一定会碰壁。
+
+放在 `scratchpad` 中的插件代码默认是不会执行的，你需要转到 NVDA 设置面板中的“高级”设置，勾选“我清楚更改这些设置可能导致 NVDA 无法正常运行”，随后勾选“允许从开发者实验目录加载自定义代码”，最后点击“确定”。
+
+好了，现在你可以重新启动 NVDA 然后转到 VS Code 的代码编辑区，按下 `NVDA+Shift+Control+L`，验证一下，可能会发声的情况：
+
+1.  按一次无声，再按一次读出了状态栏上的文本：恭喜，这是预期的情况。
+2.  VS Code 窗口聚焦后，什么都读不出来了，按键没有语音反馈：大概是复制的代码有错误，或者多了什么或者少了什么，请认真检查。
+3.  反复按 `NVDA+Shift+Control+L` 没有任何反应，按 `NVDA+Control+F1` 朗读“code 已加载。 Code.exe 当前正在运行。”，按 NVDA 查看状态栏的快捷键提示“无状态栏”，可能的原因如下：
+    *   脚本文件命名错误。
+    *   没有安装前面所说的 [mouse Enhancement](https://github.com/hwf1324/mouseEnhancement)
+    *   没有在高级设置中启用“允许从开发者实验目录加载自定义代码”选项。
+
+## 结语
+
+这一篇就写到这里吧，如果你是一个愿意探索的新手，那么这些内容足够你去吸收一阵子了。
+
+如果你遇到了错误，欢迎与我取得联系，任何形式都可以，但请注意，上面列出来的3种可能原因都检查过了么？
+
+无论像我还是向其他人寻求帮助，以下信息是必不可少的：一你怎么做的；二你遇到了什么；三你的预期是什么。
+
+最后，我希望听到你的赞美和批评，请通过任意一种你喜欢的方式给我一些反馈。

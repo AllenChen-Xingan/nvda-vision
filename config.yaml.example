@@ -1,0 +1,131 @@
+# NVDA Vision Screen Reader - Configuration File
+# Version: 1.0.0
+# Created: 2025-12-24
+
+# ========== General Settings ==========
+
+version: "1.0.0"
+language: "zh-CN"
+
+# Privacy: Disable cloud API by default (real.md constraint 1)
+enable_cloud_api: false
+
+# ========== Model Settings ==========
+
+models:
+  # Model preference: auto | uitars | minicpm | doubao
+  # - auto: Automatically select based on hardware
+  # - uitars: Force UI-TARS 7B (requires GPU with 16GB+ VRAM)
+  # - minicpm: Force MiniCPM-V 2.6 (CPU, requires 6GB+ RAM)
+  # - doubao: Force Doubao cloud API
+  preference: "auto"
+
+  # Maximum inference time in seconds (real.md constraint 6)
+  timeout_seconds: 15.0
+
+  # Minimum confidence threshold (real.md constraint 3)
+  # Elements below this threshold will be marked as "uncertain"
+  confidence_threshold: 0.7
+
+  # UI-TARS 7B Configuration (GPU model)
+  uitars:
+    enabled: true
+    model_path: "models/uitars-7b"
+    device: "cuda"  # cuda | cpu
+    dtype: "float16"  # float16 | float32 (float16 uses less VRAM)
+
+  # MiniCPM-V 2.6 Configuration (CPU model)
+  minicpm:
+    enabled: true
+    model_path: "models/minicpm-v-2.6"
+    device: "cpu"
+
+  # Doubao Cloud API Configuration
+  doubao:
+    enabled: false  # Requires user opt-in
+    api_endpoint: "https://ark.cn-beijing.volces.com/api/v3/visual"
+    # API key stored encrypted (use config UI to set)
+    # api_key will be encrypted with Windows DPAPI
+
+# ========== Cache Settings ==========
+
+cache:
+  enabled: true
+
+  # Cache TTL in seconds (default: 5 minutes)
+  ttl_seconds: 300
+
+  # Maximum number of cached results
+  max_size: 1000
+
+# ========== UI Settings ==========
+
+ui:
+  # Announce confidence scores (real.md constraint 3)
+  announce_confidence: true
+
+  # Announce element positions
+  announce_position: true
+
+  # Auto-recognize when focus changes (experimental)
+  auto_recognize_on_focus: false
+
+  # Progress feedback delay in seconds (real.md constraint 6)
+  # Announce "still recognizing" after this delay
+  progress_feedback_delay: 5.0
+
+# ========== Keyboard Shortcuts ==========
+
+shortcuts:
+  recognize_screen: "NVDA+shift+v"
+  recognize_at_cursor: "NVDA+shift+c"
+  next_element: "NVDA+shift+n"
+  previous_element: "NVDA+shift+p"
+  show_cache_stats: "NVDA+shift+c"
+  clear_cache: "NVDA+shift+alt+c"
+
+# ========== Privacy Settings ==========
+
+privacy:
+  # Local processing only (real.md constraint 1)
+  # If true, never use cloud API even if configured
+  local_processing_only: true
+
+  # Blur sensitive regions before cloud upload (if enabled)
+  blur_sensitive_regions: false
+
+  # Never log screenshot content (real.md constraint 2)
+  log_screenshots: false
+
+# ========== Security Settings ==========
+
+security:
+  # Encrypted API keys will be stored here by ConfigManager
+  # Do NOT manually edit these fields
+  # Use the plugin's configuration UI to set API keys
+
+  # doubao_api_key_encrypted: "..."
+
+# ========== Logging Settings ==========
+
+logging:
+  # Log level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+  level: "INFO"
+
+  # Log retention in days
+  retention_days: 7
+
+  # Maximum log file size before rotation (MB)
+  max_file_size_mb: 10
+
+# ========== Advanced Settings ==========
+
+advanced:
+  # Enable experimental features
+  enable_experimental: false
+
+  # Screenshot capture delay (milliseconds)
+  capture_delay_ms: 100
+
+  # Thread pool size for parallel processing
+  thread_pool_size: 2

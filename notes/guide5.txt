@@ -1,0 +1,309 @@
+# NVDA 插件开发实践第五篇： 实现功能了吗？还差点啥？有哪些调试技巧？ - NVDA 中文站
+
+这是 NVDA 插件开发实践系列文章的第五篇。你可以通过下面的“传送门”查看之前的章节：
+
+*   [第一篇（画饼篇）](https://nvdacn.com/index.php/archives/1296/)
+*   [第二篇：预备篇—确定需求，寻找已有方案](https://nvdacn.com/index.php/archives/1319/)
+*   [第三篇： 敢想敢做——写出你的第一行代码，控制台不可怕](https://nvdacn.com/index.php/archives/1381/)
+*   [第四篇： 开发插件就是把一堆实验代码整理出来](https://nvdacn.com/index.php/archives/1410/)
+
+## 前言
+
+在上一篇中，我们成功地将之前在 NVDA Python 控制台中编写的实验性代码，**迁移**到一个独立的 Python 文件中，实现了代码的 **持久化**。这意味着我们创建了一个可复用的 NVDA 插件脚本，而不再仅仅是执行一些临时的代码片段。
+
+然而，我们当时的脚本功能非常有限，仅仅是简单地读取了整个状态栏的文本内容，与 NVDA 原生的状态栏朗读功能并无本质差异。我们的目标是读取 VS Code 代码编辑区域的行号，显然还需要进一步的开发。
+
+在本篇中，我们将深入剖析现有的代码，并逐步对其进行改进，使其能够更精准地实现我们的需求。此外，我们还将学习一些重要的调试技巧，帮助我们更有效地排查和解决开发过程中遇到的问题。
+
+## 应用模块的代码结构分析
+
+回顾上一篇的代码，尽管总共不到 10 行，但它已经构成了一个 NVDA 应用模块插件的基本框架。为了更好地理解，我们将其分解为三个关键部分：
+
+### 1\. 导入必要的模块
+
+```
+import api
+import appModuleHandler
+import ui
+from scriptHandler import script
+```
+
+*   **`import appModuleHandler`**: `appModuleHandler` 模块是开发任何 NVDA 应用模块（AppModule）插件的基石。它提供了 NVDA 与特定应用程序交互的基础能力，定义了应用模块的生命周期和事件处理机制。
+*   **`from scriptHandler import script`**: `script` 装饰器从 `scriptHandler` 模块导入，用于将普通的 Python 函数声明为可被 NVDA 执行的脚本，并将其与特定的输入手势（例如键盘快捷键）关联起来。`script` 装饰器是定义 NVDA 插件功能的核心组件之一。
+
+### 2\. 定义插件的 AppModule 类
+
+```
+class AppModule(appModuleHandler.AppModule):
+```
+
+*   **`class AppModule(appModuleHandler.AppModule):`**: 定义一个名为 `AppModule` 的类，该类继承自 `appModuleHandler.AppModule`。每个应用模块插件都必须定义这样一个类，它充当 NVDA 与特定应用程序之间的桥梁，用于封装与该应用程序相关的 NVDA 功能。通过继承 `appModuleHandler.AppModule`，我们的 `AppModule` 类具备了处理特定应用程序事件的能力，并能响应用户的操作。
+
+### 3\. 定义脚本函数并绑定手势
+
+```
+    @script(gesture="kb:NVDA+Shift+Control+L", description="Report current line in vscode.")
+    def script_reportLine(self, gesture):
+        statusBarText = api.getStatusBarText(api.getStatusBar())
+        ui.message(statusBarText)
+```
+
+*   **`@script(gesture="kb:NVDA+Shift+Control+L", description="Report current line in vscode.")`**: `@script` 装饰器将 `script_reportLine` 函数转换为一个 NVDA 脚本命令。
+    *   **`gesture="kb:NVDA+Shift+Control+L"`**: 指定了触发此脚本的键盘快捷键为 `NVDA+Shift+Control+L`。`kb:` 前缀表示这是一个键盘手势，NVDA 支持多种类型的手势（输入来源），包括键盘 (kb)、触摸屏 (ts) 和盲文显示器 (br)等。
+    *   **`description="Report current line in vscode."`**: 为该脚本添加了描述信息，此描述将会在 NVDA 的输入帮助模式（`NVDA+1`）和“按键与手势”对话框中显示，便于用户理解该脚本命令的功能。
+*   **`def script_reportLine(self, gesture):`**: 定义了一个名为 `script_reportLine` 的方法。该方法会在用户执行指定手势时被调用。
+    *   **`self`**: 是对 `AppModule` 类实例的引用，允许访问当前模块的属性和方法。
+    *   **`gesture`**: 是一个 `InputGesture` 对象，包含触发脚本命令的输入手势信息，比如我们可以获得执行当前脚本命令的手势名称。
+
+**注意：** 所有使用 `@script` 装饰器定义的方法，其名称都必须以 `script_` 开头，这是 NVDA 脚本机制的要求。
+
+当前阶段，我们不必过分强调使用高级代码编辑器。我们的首要目标是确保代码能够成功运行。通过以上几行代码，你就能让 NVDA 为你服务，这是一件非常令人兴奋的事。强烈建议在阅读完本节内容后，你能够亲自将这些代码敲一遍，加深理解。
+
+## 插件的调试过程：日志、日志片段和重载插件
+
+在软件开发过程中，出现错误是不可避免的。而调试 (debug) 是一个找出并修复这些错误的过程。对于 NVDA 插件开发，日志系统、日志片段和插件重载是我们常用的调试工具。
+
+### 启用日志记录和错误提示音
+
+NVDA 具有完善的日志记录系统，用于记录 NVDA 运行过程中的各种事件，包括错误信息。这些信息对于分析错误原因至关重要，也是开发者排查问题的关键依据。此外，为了在代码出现错误时及时得到提醒，我们需要开启错误提示音。
+
+*   **启用日志记录：** 按下 `NVDA+Ctrl+G` 打开“常规”设置面板。在“日志记录级别”下拉菜单中，选择“调试 (DEBUG)”。“调试”级别会输出最详细的日志信息，方便我们排查错误。在日常使用中，为了安全和性能考量，通常将日志级别设置为“禁用”或者“信息 (INFO)”。
+*   **开启错误提示音：** 切换到“高级”设置面板，勾选“我清楚更改这些设置可能导致 NVDA 无法正常运行。” 随后找到“日志记录后播放错误提示音”，下拉选择“是”。 这样设置后，当 NVDA 或插件代码发生错误时，会发出短促的提示音。
+
+### 定位错误并解读日志
+
+为了演示如何利用日志进行调试，我们可以在代码中人为地制造一个 Typo （拼写错误）。例如，将 `import ui` 改为 `import uo`，保存修改后，重新启动 NVDA 并切换到 VS Code。
+
+你会发现，NVDA 没有读出任何内容，反而发出了错误提示音。此时，打开日志查看器（`NVDA+F1`），并将日志保存到本地。然后使用你常用的文本编辑器打开日志文件，你会看到类似下面的信息：
+
+```
+INFO - __main__ (19:56:29.461) - MainThread (20544):
+Starting NVDA version 2024.4.1 x86
+INFO - core.main (19:56:29.532) - MainThread (20544):
+Config dir: C:\Users\cary\AppData\Roaming\nvda
+INFO - config.ConfigManager._loadConfig (19:56:29.538) - MainThread (20544):
+Loading config: C:\Users\cary\AppData\Roaming\nvda\nvda.ini
+...
+```
+
+继续往后看，你还会看到更多环境信息：包括NVDA 的用户设置；操作系统版本；Python 版本；各个模块的初始化状态；从哪里，加载了哪些插件，是否加载成功等等。
+
+其中有一项你可能会熟悉： `Developer Scratchpad mode enabled` 这就是我们在上一篇启用的“允许从开发者实验目录加载自定义代码”选项。
+
+我们往往希望快速定位到出错原因，上述导致 NVDA 无声的严重错误，会被 ERROR 这个级别的日志捕获。所以，我们以 "Error" 为关键词在日志内查找，前面可能会有包含 "Error" 的匹配结果，比如你有可能会看到一些带有 "Error" 字样的 NVDA 的配置 Key/Value 比如 "playErrorSound" 这显然就不是一个错误，而是 NVDA 的一个设置项，也就是前面我们设置过的的“日志记录后播放错误提示音”。
+
+如果按照上述我提供的方法修改（制造了一个拼写错误），你一定会找到类似下面的日志片段，其中涉及到路径的部分可能不同：
+
+```
+  File "C:\Users\cary\AppData\Roaming\nvda\scratchpad\appModules\code.py", line 4, in <module>
+    import uo
+ModuleNotFoundError: No module named 'uo'
+```
+
+这段日志清晰地显示了错误发生的位置：`code.py` 文件的第 4 行，错误类型是 `ModuleNotFoundError`，错误信息是 `No module named 'uo'`，表示找不到名为 `uo` 的模块。这正是因为我们将 `ui` 误写成了 `uo`。
+
+### 捕获日志片段
+
+现在，请将 `import uo` 改回 `import ui`，然后我们再制造另一个错误，将最后一行的 `ui.message(statusBarText)` 改成 `UI.message(statusBarText)` （将 `ui` 改为大写）。保存修改后重新加载插件。  
+与上面一样，重新启动 NVDA 使更改生效，再切换到 VS Code 窗口。
+
+你可能会发现，当你切换到 VS Code 后，NVDA 并没有报错，但当你按下先前定义的快捷键 `NVDA+Ctrl+Shift+L` 的时候，错误出现了。  
+养成一个好习惯，当 NVDA 报错的时候，不要置之不理，随手看一下日志。当然，我们可以按照上面的步骤打开日志查看器并在日志中搜索错误信息。
+
+然而，NVDA 还提供了一个更方便的功能——**捕获日志片段**。它可以帮助我们快速地获取特定阶段的日志信息。这种方法适用于那些可以稳定复现错误的调试场景。
+
+、操作步骤如下：
+
+1.  **标记日志片段开始点：** 按下 `NVDA+Shift+Ctrl+F1`，NVDA 将朗读“日志片段开始点已标记，再按一次复制到剪贴板”。
+2.  **复现错误：** 切换到 VS Code，按下 `NVDA+Ctrl+Shift+L` 快捷键，触发错误。
+3.  **复制日志片段：** 再次按下 `NVDA+Shift+Ctrl+F1`，将日志片段复制到剪贴板。
+4.  **粘贴到文本编辑器：** 打开文本编辑器，粘贴剪贴板内容。
+
+你会看到类似下面的错误信息（路径和行号可能不同，错误类型也可能不同，至于原因，请往后看）：
+
+```
+IO - speech.speech.speak (19:53:04.549) - MainThread (7136):
+Speaking ['日志片段开始点已标记，再按一次复制到剪贴板']
+DEBUG - speech.manager.SpeechManager._handleIndex (19:53:05.195) - MainThread (7136):
+Unknown index 5201, speech probably cancelled from main thread.
+IO - inputCore.executeGesture (19:53:05.318) - winInputHook (1344):
+Input: kb(laptop):NVDA+control+shift+l
+ERROR - scriptHandler.executeScript (19:53:05.461) - MainThread (7136):
+error executing script: <bound method AppModule.script_reportLine of AppModule(code, appName='code', processID=28640)> with gesture 'NVDA+Ctrl+Shift+l'
+Traceback (most recent call last):
+  File "scriptHandler.pyc", line 300, in executeScript
+  File "C:\Users\cary\AppData\Roaming\nvda\scratchpad\appModules\code.py", line 12, in script_reportLine
+    UI.message(statusBarText)
+    ^^
+NameError: name 'UI' is not defined
+IO - inputCore.executeGesture (19:53:06.186) - winInputHook (1344):
+Input: kb(laptop):control+shift+NVDA+f1
+```
+
+这段日志告诉我们，`script_reportLine` 函数的第 12 行发生了 `AttributeError`，错误信息是 `name 'UI' is not defined`。
+
+**特殊说明：VS Code 中的一个特殊 Bug**
+
+你可能还记得，我在上一篇文章中强调过，在检验的时候“反复按” `NVDA+Ctrl+Shift+L`，实际上，如果你是按照我上面的步骤操作的，第一次捕捉到的日志错误类型可能与上面不同，而是：
+
+```
+IO - speech.speech.speak (19:52:02.363) - MainThread (7136):
+Speaking ['日志片段开始点已标记，再按一次复制到剪贴板']
+IO - inputCore.executeGesture (19:52:03.857) - winInputHook (1344):
+Input: kb(laptop):NVDA+control+shift+l
+ERROR - scriptHandler.executeScript (19:52:03.894) - MainThread (7136):
+error executing script: <bound method AppModule.script_reportLine of AppModule(code, appName='code', processID=28640)> with gesture 'NVDA+Ctrl+Shift+l'
+Traceback (most recent call last):
+  File "scriptHandler.pyc", line 300, in executeScript
+  File "C:\Users\cary\AppData\Roaming\nvda\scratchpad\appModules\code.py", line 11, in script_reportLine
+    statusBarText = api.getStatusBarText(api.getStatusBar())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "api.pyc", line 471, in getStatusBarText
+AttributeError: 'NoneType' object has no attribute 'appModule'
+IO - inputCore.executeGesture (19:52:04.901) - winInputHook (1344):
+Input: kb(laptop):control+shift+NVDA+f1
+```
+
+这样，你应该就不慌了，不是你的问题，这是 VS Code 中的一个错误，见[Microsoft/vscode#96392(comment)](https://github.com/microsoft/vscode/issues/96392#issuecomment-620651967)。
+
+对于该错误，我们将在后续的开发中进行特殊处理。
+
+使用捕捉日志片段的方法能够快速补货错误发声时产生的日志，降低了我们在日志中的寻找成本。
+
+### 快速重载插件
+
+每次修改代码后都重启 NVDA 显然效率较低。NVDA 允许我们快速重新加载插件，而无需完全重启。
+
+在“NVDA 菜单”（`NVDA+N`）中，选择“工具”菜单，然后选择“重新加载插件”，
+
+或者直接按下 `NVDA+Ctrl+F3` 两种操作方式是等价的。
+
+修复错误后，使用这个功能可以快速使修改生效。
+
+**请注意：个别插件的 terminate 做的并不是很好，容易在重载插件后导致 NVDA 出现一些奇怪的行为，如果遇到此类问题，且暂时没有足够的经验去处理，请依然使用重新启动的方式来重新加载修改后的插件。**
+
+**我个人实际上更推荐你用一个干净可控的环境来开发/测试插件，比如使用一个不包含三方插件的便携版。**
+
+### 对不同辅助功能接口的统一抽象——`NVDAObject`
+
+我们之前实现的代码只是简单地读取了状态栏的全部文本，而我们真正想要的是包含行号的那部分。
+
+回顾一下 `api.getStatusBar` 函数的返回值：
+
+```
+>>> help(api.getStatusBar)
+Help on function getStatusBar in module api:
+
+getStatusBar() -> Optional[NVDAObjects.NVDAObject]
+    Obtain the status bar for the current foreground object.
+    @return: The status bar object or C{None} if no status bar was found.
+```
+
+可以看到，这个函数返回的是一个 `NVDAObjects.NVDAObject` 对象。
+
+`NVDAObject` 是 NVDA 对屏幕上各种 UI 元素进行的统一抽象。无论这些元素来自 MSAA、UIAutomation、JAB 还是其他辅助功能接口，NVDA 都会将其转换为 `NVDAObject`。这种抽象使得我们可以使用一套统一的 API 来访问和操作不同的屏幕元素，而无需关心底层辅助功能接口的差异。
+
+如果上面的表述你暂时无法完全理解也没关系，此处如果你对 NVDA 的对象导航操作很熟悉，那么后面的内容理解起来就不难了。
+
+在 VS Code 中，状态栏不是一个简单的文本区域，它是一个容器对象，也就是说它由多个子对象构成，例如用于显示/更改当前文件编码的按钮、显示/切换当前 git 分支的按钮。我们需要的行号信息只是其中一个子对象的文本。
+
+那么，如何获取特定子对象的文本呢？这需要我们深入了解 `NVDAObject` 的属性。
+
+### 探索 `NVDAObject` 的属性
+
+首先我们按 `F6` 找到状态栏，使用对象导航查看一下状态栏这个对象中包含哪些子对象，。以我当前的状态栏为例，对象导航过程中 NVDA 将朗读：
+
+*   "remote 按钮"
+*   "nvda (Git) - TypedWords, Checkout Branch/Tag... 按钮"
+*   "nvda (Git) - Synchronize Changes 按钮"
+*   "git-pull-request Pull Request #17505 按钮"
+*   "Ln 1000, Col 53 按钮"
+*   ...
+
+随后，我们可以使用 NVDA 的 Python 控制台来探索 `NVDAObject` 的属性，以刚刚我们查看的状态栏为例。
+
+依然使用对象导航找到“状态栏”这个对象，不是其子对象哦！
+
+1.  **转到 NVDA Python 控制台：** 按下 `NVDA+Control+Z` 打开。
+    
+2.  **获取状态栏对象：** 输入以下代码并回车，获取状态栏对象：
+    
+    ```
+    statusBar = nav
+    ```
+    
+3.  **检查状态栏对象是否有效：** 输入 `statusBar` 并回车。如果返回 `<NVDAObjects.IAccessible.ia2Web.Ia2Web object at ...>`，说明获取成功。
+    
+4.  **获取状态栏对象的子对象：** 输入以下代码，获取状态栏对象的子对象：
+    
+    ```
+    children = statusBar.children
+    print(children)
+    ```
+    
+    控制台将输出一个列表，其中包含了状态栏的所有子对象，每个子对象都是一个 `NVDAObject`。  
+    记住哦！`NVDAObject.children` 会返回一个 list，当然，不记得也没关系，使用 type() 可以告诉你。
+    
+5.  **循环遍历子对象并打印其文本：** 输入以下代码，遍历子对象并打印其文本：
+    
+    ```
+    for child in children:
+        print(child.name)
+    ```
+    
+    查看输出结果，你会发现正式我们使用对象导航看到的那些，也就是状态栏上实际显示的文本，我们要的行号信息也在其中。
+    
+6.  **筛选包含行号的子对象**
+    
+
+既然 `statusBar.children`返回一个列表，那么得到其中包含行列信息的列表项索引就很容易了。
+
+比如，你可以使用列表推导式把子项及其索引打印出来：
+
+```
+print(*enumerate([child.name for child in children]))
+```
+
+在我这里，包含行列信息的子项索引是 12，那么：
+
+`statusBar.children[12].name`
+
+通过以上步骤，我们就成功地获取到了包含行号的文本信息。
+
+当然，这里不够健壮，在这里埋一个伏笔，随着学习的深入让我们逐步来改进它。
+
+## 代码修改
+
+现在，我们已经知道如何获取行号文本了，让我们修改代码：
+
+```
+import api
+import appModuleHandler
+import ui
+from scriptHandler import script
+
+class AppModule(appModuleHandler.AppModule):
+
+    @script(gesture="kb:NVDA+Shift+Control+L", description="Report current line in vscode.")
+    def script_reportLine(self, gesture):
+        statusBar = api.getStatusBar()
+        ui.message(statusBar.children[12].name)
+```
+
+这段代码主要做了以下修改：
+
+1.  获取状态栏对象。
+2.  通过索引得到包含行列信息的子对象，进一步得到子对象的 `name` 属性。
+3.  通过 `ui.message` 将其朗读出来。
+
+保存修改后的代码，重新加载插件，再次按下定义的快捷键，NVDA 现在应该只会读出包含行列信息的那部分文本了。
+
+## 总结
+
+在本篇中，我们对上一篇的代码进行了改进，使其能够更精确地读取 VS Code 状态栏中的行列信息。同时，我们还学习了如何使用 NVDA 的日志系统进行调试，以及如何利用 `NVDAObject` 及其属性来获取屏幕元素的信息。
+
+尽管我在第一篇中表示这不是针对初学者的手把手教程，然而在叙述中我还是尽力写的详细，足够初学者友好。代码的进度很慢，但内容依然丰富，除了阅读以外，你一定需要动手实践一下。
+
+一如既往，如果你从第一篇看到这里了。别忘了留下你的反馈。
+
+在下一篇中，我们将继续深入探讨 `NVDAObject`，学习如何使用 `NVDAObject` 的属性和方法，同时穿插一些 code review 的建议，从而进一步改进我们的插件。

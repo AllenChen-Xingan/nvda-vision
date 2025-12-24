@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "WebSearch",
+      "Bash(powershell -command:*)",
+      "Bash(if not exist \"spec\\\\pm\" mkdir specpm)",
+      "Bash(python main.py:*)",
+      "Bash(/tasks)",
+      "WebFetch(domain:github.com)",
+      "Bash(docker --version:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(if not exist \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\src\\\\README.md\" echo.)",
+      "WebFetch(domain:download.nvaccess.org)",
+      "Bash(findstr:*)",
+      "Bash(tree:*)",
+      "WebFetch(domain:www.nvaccess.org)",
+      "Bash(pip install:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
