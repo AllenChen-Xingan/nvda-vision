@@ -338,6 +338,152 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             logger.exception("Error navigating to previous element")
             ui.message(_("Navigation failed"))
 
+    @scriptHandler.script(
+        description=_("Activate current UI element"),
+        gesture="kb:NVDA+shift+enter",
+        category="NVDA Vision"
+    )
+    def script_activateElement(self, gesture):
+        """Activate (click) current UI element.
+
+        Implementation follows PRIORITY_ROADMAP.md P0-2 requirements:
+        - Checks element actionability
+        - Validates bbox coordinates
+        - Shows confirmation for low-confidence elements
+        - Uses pyautogui for mouse simulation
+        - Provides voice feedback
+        - Satisfies real.md constraint 3 (confidence transparency)
+        """
+        try:
+            if not self.enabled:
+                ui.message(_("NVDA Vision is not available"))
+                return
+
+            # Get current element
+            element = self.recognition_controller.get_current_element()
+
+            if not element:
+                ui.message(_("No element to activate"))
+                logger.info("Activation failed: no current element")
+                return
+
+            # Check if element is actionable
+            if not element.actionable:
+                ui.message(
+                    _("Element not actionable: {type}").format(
+                        type=element.element_type
+                    )
+                )
+                logger.info(
+                    f"Activation skipped: element not actionable "
+                    f"({element.element_type})"
+                )
+                return
+
+            # Low confidence warning (real.md constraint 3)
+            from .constants import LOW_CONFIDENCE_THRESHOLD
+            if element.confidence < LOW_CONFIDENCE_THRESHOLD:
+                # Ask for confirmation
+                try:
+                    import wx
+                    dlg = wx.MessageDialog(
+                        None,
+                        _("This element has low confidence ({conf:.0%}).\n"
+                          "Type: {type}\n"
+                          "Text: {text}\n\n"
+                          "Continue with activation?").format(
+                            conf=element.confidence,
+                            type=element.element_type,
+                            text=element.text or "(no text)"
+                        ),
+                        _("Confirm Activation"),
+                        wx.YES_NO | wx.ICON_QUESTION | wx.NO_DEFAULT
+                    )
+
+                    result = dlg.ShowModal()
+                    dlg.Destroy()
+
+                    if result != wx.ID_YES:
+                        ui.message(_("Activation cancelled"))
+                        logger.info("User cancelled low-confidence activation")
+                        return
+
+                except ImportError:
+                    # Fallback: voice warning only (no wx available)
+                    ui.message(
+                        _("Warning: low confidence {conf:.0%}. "
+                          "Press Enter to continue, Escape to cancel").format(
+                            conf=element.confidence
+                        )
+                    )
+
+            # Validate bbox
+            bbox = element.bbox
+            if not bbox or len(bbox) != 4:
+                ui.message(_("Element coordinates invalid"))
+                logger.error(f"Invalid bbox: {bbox}")
+                return
+
+            x1, y1, x2, y2 = bbox
+
+            # Check bbox is within screen bounds
+            try:
+                import win32api
+                screen_width = win32api.GetSystemMetrics(0)
+                screen_height = win32api.GetSystemMetrics(1)
+
+                if not (0 <= x1 < x2 <= screen_width and
+                        0 <= y1 < y2 <= screen_height):
+                    ui.message(_("Element coordinates out of screen bounds"))
+                    logger.error(
+                        f"Bbox out of bounds: {bbox}, "
+                        f"screen: {screen_width}x{screen_height}"
+                    )
+                    return
+
+            except Exception as e:
+                logger.warning(f"Failed to check screen bounds: {e}")
+
+            # Calculate click position (center of bbox)
+            click_x = (x1 + x2) // 2
+            click_y = (y1 + y2) // 2
+
+            # Perform click with pyautogui
+            try:
+                import pyautogui
+
+                # Move mouse to target (with animation for natural feel)
+                pyautogui.moveTo(click_x, click_y, duration=0.2)
+
+                # Perform click
+                pyautogui.click(click_x, click_y)
+
+                # Voice feedback
+                ui.message(
+                    _("Activated: {text}").format(
+                        text=element.text or element.element_type
+                    )
+                )
+
+                # Log success
+                logger.info(
+                    f"Element activated: type={element.element_type}, "
+                    f"text='{element.text}', pos=({click_x}, {click_y}), "
+                    f"confidence={element.confidence:.2%}"
+                )
+
+            except ImportError:
+                ui.message(_("pyautogui not installed"))
+                logger.error("pyautogui not available for element activation")
+
+            except Exception as e:
+                ui.message(_("Activation failed"))
+                logger.exception(f"Failed to activate element: {e}")
+
+        except Exception as e:
+            logger.exception("Error in element activation")
+            ui.message(_("Activation error"))
+
     def _on_recognition_complete(self, result: RecognitionResult):
         """Callback when recognition completes successfully.
 

@@ -16,7 +16,22 @@
       "Bash(tree:*)",
       "WebFetch(domain:www.nvaccess.org)",
       "Bash(pip install:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/git-auto-tag-v2/dist/hook.js",
+            "timeout": 30000
+          }
+        ]
+      }
     ]
   }
 }
