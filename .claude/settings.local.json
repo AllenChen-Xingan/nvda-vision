@@ -18,7 +18,10 @@
       "Bash(pip install:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(if not exist \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\tests\" mkdir \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\tests\")"
+      "Bash(if not exist \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\tests\" mkdir \"D:\\\\allen\\\\app\\\\nvda screen rec\\\\tests\")",
+      "Bash(git tag:*)",
+      "Bash(python run_tests.py:*)",
+      "Bash(python:*)"
     ]
   },
   "hooks": {
