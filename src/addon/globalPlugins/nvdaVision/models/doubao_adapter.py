@@ -130,10 +130,44 @@ class DoubaoAPIAdapter(VisionModelAdapter):
                             {
                                 "type": "text",
                                 "text": (
-                                    "Analyze this UI screenshot and identify all interactive elements. "
-                                    "Return a JSON array with: type, text, bbox [x1,y1,x2,y2], confidence, actionable. "
-                                    "Example: [{\"type\":\"button\",\"text\":\"OK\",\"bbox\":[10,20,100,50],"
-                                    "\"confidence\":0.95,\"actionable\":true}]"
+                                    "You are a UI accessibility assistant for visually impaired users. "
+                                    "Analyze this screenshot and identify ALL UI elements with DETAILED descriptions.\n\n"
+
+                                    "CRITICAL REQUIREMENTS:\n"
+                                    "1. For EVERY element, provide a meaningful description\n"
+                                    "   - Text buttons: use the visible text\n"
+                                    "   - Icon buttons: DESCRIBE what the icon represents\n"
+                                    "   - Even if there's no text label, YOU MUST infer the purpose\n\n"
+
+                                    "2. Common icon patterns:\n"
+                                    "   - Microphone/mic → \"microphone\" or \"mute\"\n"
+                                    "   - Camera → \"camera\" or \"video\"\n"
+                                    "   - Monitor/screen → \"share screen\"\n"
+                                    "   - Speech bubble → \"chat\" or \"messages\"\n"
+                                    "   - People icon → \"participants\" or \"members\"\n"
+                                    "   - Gear icon → \"settings\"\n"
+                                    "   - Three dots → \"more options\" or \"menu\"\n"
+                                    "   - Plus (+) → \"add\" or \"new\"\n"
+                                    "   - X icon → \"close\" or \"exit\"\n\n"
+
+                                    "OUTPUT FORMAT (JSON array only):\n"
+                                    "[\n"
+                                    "  {\n"
+                                    "    \"type\": \"button|icon_button|textbox|link|text|label|icon\",\n"
+                                    "    \"text\": \"descriptive text or icon meaning\",\n"
+                                    "    \"bbox\": [x1, y1, x2, y2],\n"
+                                    "    \"confidence\": 0.0-1.0,\n"
+                                    "    \"actionable\": true|false\n"
+                                    "  }\n"
+                                    "]\n\n"
+
+                                    "EXAMPLES:\n"
+                                    "[{\"type\":\"icon_button\",\"text\":\"microphone mute\",\"bbox\":[100,500,140,540],\"confidence\":0.92,\"actionable\":true},"
+                                    "{\"type\":\"icon_button\",\"text\":\"camera video\",\"bbox\":[145,500,185,540],\"confidence\":0.94,\"actionable\":true},"
+                                    "{\"type\":\"icon_button\",\"text\":\"share screen\",\"bbox\":[190,500,230,540],\"confidence\":0.90,\"actionable\":true}]\n\n"
+
+                                    "CRITICAL: NEVER return empty \"text\" field. Always describe what you see. "
+                                    "Return ONLY the JSON array, no explanations."
                                 )
                             },
                             {
@@ -145,7 +179,7 @@ class DoubaoAPIAdapter(VisionModelAdapter):
                         ]
                     }
                 ],
-                "temperature": 0.7,
+                "temperature": 0.1,  # Low temperature for stable icon recognition
                 "max_tokens": 2048
             }
 

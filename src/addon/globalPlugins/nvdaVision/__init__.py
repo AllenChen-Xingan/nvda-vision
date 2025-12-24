@@ -537,8 +537,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             # Build speech text
             text_parts = []
 
-            # Type and text
-            text_parts.append(f"{element.element_type}: {element.text}")
+            # Type and text with better handling for empty text (icon button fix)
+            element_description = element.text if element.text else "unrecognized element"
+
+            # If it's a button type without text, add helpful context
+            if not element.text and element.element_type in ["button", "icon_button"]:
+                element_description = f"unrecognized {element.element_type}"
+
+            text_parts.append(f"{element.element_type}: {element_description}")
 
             # Confidence annotation (real.md constraint 3)
             from .constants import LOW_CONFIDENCE_THRESHOLD
